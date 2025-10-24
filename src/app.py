@@ -4,12 +4,13 @@ from typing import Annotated
 from sqlalchemy.exc import IntegrityError, OperationalError
 from datetime import datetime
 
-from models import Organization, User, UserHierarchy, UserSchema, Delegation, DelegationSchema
+from models import Organization, User, UserHierarchy, UserSchema, Delegation, DelegationSchema, DocumentUserLink, Document
 from db_connector import MariaDbConnector, MariaDBAuthenticator
 from organizations import add_user_link, remove_link, get_childs
 from users import update_delegation_threshold, update_availability
 from delegations import create_db_delegation, get_user_delegation, revoke_db_delegation
 from utils import compute_timedelta_from_string
+from documents import create_document_links
 
 app = FastAPI()  # Création de l'application FastAPI
 
@@ -189,9 +190,21 @@ async def revoke_delegation(
         await session.close()
     return {"message": "Delegation was properly revoked"}
 
-# async def main():
-#     print("salut")
-#     await CONNECTOR.init_db()
+@app.post("/documents/create")
+async def create_document(
+    owner_id: Annotated[int, Body(..., embed=True)],
+    signing_user: Annotated[int, Body(..., embed=True)],
+    shared_users: Annotated[list[int], Body(..., embed=True)],
+    filename: Annotated[str, Body(..., embed=True)],
+    recipient_email: Annotated[str, Body(..., embed=True)]
+):
+    document = Document(filename=filename, created_by=owner_id)
+    session = CONNECTOR.create_session()
+    await CONNECTOR.insert_items([document], session)
+    links = [DocumentUserLink(document_id=document.id, user_id=shared_user, permission_type="read") for shared_user in shared_users]
+    links.append(DocumentUserLink(document_id=document.id, user_id=signing_user, permission_type="sign"))
+    await create_document_links(session, links)
+    # Need to trigger the notifications for the current org
+    # Need to send an email if remote recipient is not using the solution
+    # Otherwise, sahre the document with the other organization
 
-# if __name__ == "__main__":
-#     asyncio.run(main())

@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, ForeignKey, CheckConstraint, UniqueConstraint,
-    PrimaryKeyConstraint, Index, DateTime, Boolean
+    PrimaryKeyConstraint, Index, DateTime, Boolean, func
 )
 from sqlalchemy.orm import relationship, declarative_base
 from pydantic import BaseModel, ConfigDict
@@ -31,6 +31,7 @@ class User(Base):
     available = Column(Boolean, default=True)
 
     organization = relationship("Organization", back_populates="users")
+    document = relationship("Document", back_populates="users")
 
     def __repr__(self):
         return f"<User(id={self.id}, name={self.full_name})>"
@@ -82,3 +83,48 @@ class DelegationSchema(BaseModel):
     user_id_owner: int
     user_id_delegate: int
     bounded: bool
+
+class Document(Base):
+    __tablename__ = 'documents'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    filename = Column(String(255), nullable=False)
+    created_by = Column(Integer, ForeignKey('users.id', ondelete='RESTRICT'), nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    status = Column(String(20), default='pending')
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'signed', 'archived')",
+            name='ck_documents_status'
+        ),
+    )
+
+    users = relationship("User", back_populates="document")
+
+class DocumentUserLink(Base):
+    __tablename__ = 'document_user_links'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    document_id = Column(Integer, ForeignKey('documents.id', ondelete='CASCADE'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+
+    permission_type = Column(String(20), nullable=False)
+    has_signed = Column(Boolean, default=False, nullable=False)
+    signed_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "permission_type IN ('read', 'sign')",
+            name='ck_doc_user_links_permission_type'
+        ),
+        UniqueConstraint('document_id', 'user_id', 'permission_type', name='uq_doc_user_perm'),
+
+        Index('idx_doc_user_perm', 'document_id', 'permission_type'),
+        Index('idx_doc_user_signed', 'document_id', 'has_signed'),
+        Index('idx_user_doc', 'user_id', 'document_id'),
+    )
+
+    document = relationship("Document", backref="user_links")
+    user = relationship("User", backref="document_links")
