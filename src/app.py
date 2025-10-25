@@ -11,6 +11,7 @@ from users import update_delegation_threshold, update_availability
 from delegations import create_db_delegation, get_user_delegation, revoke_db_delegation
 from utils import compute_timedelta_from_string
 from documents import create_document_links
+from logger import configure_basic, get_logger, add_rotating_file_handler
 
 app = FastAPI()  # Création de l'application FastAPI
 
@@ -19,9 +20,13 @@ AUTHENTICATOR = MariaDBAuthenticator(
     port=3306, db_name="orm_async"
 )
 CONNECTOR = MariaDbConnector(AUTHENTICATOR)
+APP_LOGGER = None
 
 async def main():
+    global APP_LOGGER
     await CONNECTOR.init_db()
+    configure_basic()
+    APP_LOGGER = get_logger("app")
 
 asyncio.create_task(main())
 
@@ -49,10 +54,12 @@ async def create_user(
         await CONNECTOR.insert_items([self_link], session=session)
         if parent_id is not None:
             await add_user_link(session, organization_id, parent_id, new_user.id)
-    except IntegrityError:
+    except IntegrityError as err:
+        APP_LOGGER.error(err)
         response.status_code = status.HTTP_400_BAD_REQUEST
         return {"message": "Organization does not exist"}
-    except Exception:
+    except Exception as err:
+        APP_LOGGER.error(err)
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"message": "An unknown error has occured"}
     finally:
@@ -73,10 +80,12 @@ async def create_user_link(
     session = CONNECTOR.create_session()
     try:
         await add_user_link(session, organization_id, parent_id, child_id)
-    except ValueError:
+    except ValueError as err:
+        APP_LOGGER.error(err)
         response.status_code = status.HTTP_400_BAD_REQUEST
         return {"message": "A circling relationship was detected between users, link was not created"}
     except Exception as err:
+        APP_LOGGER.error(err)
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"message": "An unknown error has occured"}
     finally:
@@ -96,6 +105,7 @@ async def delete_user_link(
     try:
         await remove_link(session, organization_id, parent_id, child_id)
     except Exception as err:
+        APP_LOGGER.error(err)
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"message": "An unknown error has occured"}
     finally:
@@ -113,7 +123,8 @@ async def get_child_users(
     session = CONNECTOR.create_session()
     try:
         child_users = await get_childs(session, user_id, 1, max_depth)
-    except Exception:
+    except Exception as err:
+        APP_LOGGER.error(err)
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"message": "An unknown error has occured"}
     finally:
@@ -127,7 +138,8 @@ async def set_delegation_threshold(user_id: int, delegation_threshold: Annotated
     session = CONNECTOR.create_session()
     try:
         user = await update_delegation_threshold(session, user_id, delegation_threshold)
-    except Exception:
+    except Exception as err:
+        APP_LOGGER.error(err)
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"message": "An unknown error has occured"}
     finally:
@@ -149,7 +161,8 @@ async def create_delegation(
 ):
     try:
         timedelta = compute_timedelta_from_string(duration)
-    except ValueError:
+    except ValueError as err:
+        APP_LOGGER.error(err)
         response.status_code = status.HTTP_400_BAD_REQUEST
         return {"message": "Specified duration is incorrect, it should be something like 3w, 4d or 5h"}
     expiration_date=datetime.now()+timedelta
@@ -158,13 +171,17 @@ async def create_delegation(
     try:
         return_delegation = await create_db_delegation(session, delegation, overwrite=True)
     except IntegrityError as err:
+        APP_LOGGER.error(err)
         response.status_code = status.HTTP_400_BAD_REQUEST
         return {"message": err.orig, "code": err._message()}
-    except OperationalError:
+    except OperationalError as err:
+        APP_LOGGER.error(err)
         response.status_code = status.HTTP_400_BAD_REQUEST
         return {"message": "Trying to create a delegation between the same user"}
     except Exception as err:
-        raise err
+        APP_LOGGER.error(err)
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "An unknown error has occured"}
     finally:
         await session.close()
     return {"delegation": DelegationSchema.model_validate(return_delegation).model_dump()}
@@ -206,5 +223,5 @@ async def create_document(
     await create_document_links(session, links)
     # Need to trigger the notifications for the current org
     # Need to send an email if remote recipient is not using the solution
-    # Otherwise, sahre the document with the other organization
+    # Otherwise, share the document with the other organization
 

@@ -20,7 +20,7 @@ class MariaDbConnector:
     def __init__(self, authenticator: MariaDBAuthenticator):
         self.engine = create_async_engine(
             authenticator.database_connection_string,
-            echo=True,
+            echo=False,
             pool_pre_ping=True
         )
         self.session_factory = sessionmaker(
