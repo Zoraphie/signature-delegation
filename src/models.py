@@ -93,16 +93,26 @@ class Document(Base):
     created_by = Column(Integer, ForeignKey('users.id', ondelete='RESTRICT'), nullable=False)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-    status = Column(String(20), default='pending')
+    status = Column(String(20), default='inert')
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending', 'signed', 'archived')",
+            "status IN ('inert', 'pending', 'signed', 'archived')",
             name='ck_documents_status'
         ),
     )
 
     users = relationship("User", back_populates="document")
+
+class DocumentSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    filename: str
+    created_by: int
+    created_at: datetime
+    updated_at: datetime
+    status: str
 
 class DocumentUserLink(Base):
     __tablename__ = 'document_user_links'
