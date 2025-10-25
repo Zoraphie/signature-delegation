@@ -122,7 +122,7 @@ class DocumentUserLink(Base):
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
 
     permission_type = Column(String(20), nullable=False)
-    has_signed = Column(Boolean, default=False, nullable=False)
+    signed_by = Column(Integer, ForeignKey('users.id'), nullable=True)
     signed_at = Column(DateTime, nullable=True)
 
     __table_args__ = (
@@ -133,9 +133,9 @@ class DocumentUserLink(Base):
         UniqueConstraint('document_id', 'user_id', 'permission_type', name='uq_doc_user_perm'),
 
         Index('idx_doc_user_perm', 'document_id', 'permission_type'),
-        Index('idx_doc_user_signed', 'document_id', 'has_signed'),
+        Index('idx_doc_user_signed', 'document_id', 'signed_by'),
         Index('idx_user_doc', 'user_id', 'document_id'),
     )
 
     document = relationship("Document", backref="user_links")
-    user = relationship("User", backref="document_links")
+    user = relationship("User", backref="document_links", foreign_keys=[user_id])

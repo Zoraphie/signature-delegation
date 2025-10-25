@@ -2,6 +2,7 @@ import asyncio
 from fastapi import FastAPI, Body, Response, status, File, UploadFile
 from typing import Annotated
 from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy import update
 from datetime import datetime
 
 from models import (
@@ -14,7 +15,7 @@ from organizations import add_user_link, remove_link, get_childs
 from users import update_delegation_threshold, update_availability
 from delegations import create_db_delegation, get_user_delegation, revoke_db_delegation
 from utils import compute_timedelta_from_string
-from documents import create_document_links, is_owner
+from documents import create_document_links, is_owner, get_pending_signatures_db
 from logger import configure_basic, get_logger
 
 app = FastAPI()
@@ -242,10 +243,10 @@ async def create_document(
         await session.close()
     return {"document": DocumentSchema.model_validate(document).model_dump()}
 
-@app.post("/documents/share")
+@app.post("/documents/{document_id}/share")
 async def share_document(
     owner_id: Annotated[int, Body(..., embed=True)],
-    document_id: Annotated[int, Body(..., embed=True)],
+    document_id: int,
     shared_users: Annotated[list[int], Body(..., embed=True)],
     response: Response
 ):
@@ -268,10 +269,10 @@ async def share_document(
         await session.close()
     return {"message": "Document was properly shared"}
 
-@app.post("/documents/ask_signature")
+@app.post("/documents/{document_id}/ask_signature")
 async def ask_signature(
     owner_id: Annotated[int, Body(..., embed=True)],
-    document_id: Annotated[int, Body(..., embed=True)],
+    document_id: int,
     signing_user: Annotated[int, Body(..., embed=True)],
     response: Response
 ):
@@ -281,7 +282,13 @@ async def ask_signature(
             response.status_code = status.HTTP_404_NOT_FOUND
             return {"message": "File does not exist"}
         link = DocumentUserLink(document_id=document_id, user_id=signing_user, permission_type="sign")
-        await CONNECTOR.insert_items([link], session)
+        await CONNECTOR.insert_items([link], session, commit=False)
+        await session.execute(
+            update(Document)
+            .where(Document.id == document_id)
+            .values(status="pending")
+        )
+        await session.commit()
     except IntegrityError as err:
         APP_LOGGER.error(err)
         response.status_code = status.HTTP_400_BAD_REQUEST
@@ -294,7 +301,18 @@ async def ask_signature(
         await session.close()
     return {"message": f"User {signing_user} was asked to sign document {document_id}"}
 
-
+@app.get("/documents/pending")
+async def get_pending_signatures(user_id: int, response: Response):
+    session = CONNECTOR.create_session()
+    try:
+        documents = await get_pending_signatures_db(session, user_id)
+    except Exception as err:
+        APP_LOGGER.error(err)
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "An unknown error has occured"}
+    finally:
+        await session.close()
+    return {"documents": documents}
 # @app.post("/documents/create")
 # async def create_document(
 #     owner_id: Annotated[int, Body(..., embed=True)],
