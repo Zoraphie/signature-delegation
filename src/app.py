@@ -114,15 +114,15 @@ async def delete_user_link(
         "message": "Users were properly unlinked"
     }    
 
-@app.get("/users/child", status_code=200)
-async def get_child_users(
+@app.get("/users/potential_delegates", status_code=200)
+async def get_potential_delegates(
     user_id: int,
-    max_depth: int,
     response: Response
 ):
     session = CONNECTOR.create_session()
     try:
-        child_users = await get_childs(session, user_id, 1, max_depth)
+        user = await session.get(User, user_id)
+        child_users = await get_childs(session, user_id, 1, user.delegation_threshold)
     except Exception as err:
         APP_LOGGER.error(err)
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
