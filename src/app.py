@@ -15,7 +15,7 @@ from organizations import add_user_link, remove_link, get_childs
 from users import update_delegation_threshold, update_availability
 from delegations import create_db_delegation, get_user_delegation, revoke_db_delegation
 from utils import compute_timedelta_from_string
-from documents import create_document_links, is_owner, get_pending_signatures_db
+from documents import is_owner, get_pending_signatures_db, sign_document, get_delegation_signing_user
 from logger import configure_basic, get_logger
 
 app = FastAPI()
@@ -269,7 +269,7 @@ async def share_document(
         await session.close()
     return {"message": "Document was properly shared"}
 
-@app.post("/documents/{document_id}/ask_signature")
+@app.post("/documents/{document_id}/request_signature")
 async def ask_signature(
     owner_id: Annotated[int, Body(..., embed=True)],
     document_id: int,
@@ -313,24 +313,30 @@ async def get_pending_signatures(user_id: int, response: Response):
     finally:
         await session.close()
     return {"documents": documents}
-# @app.post("/documents/create")
-# async def create_document(
-#     owner_id: Annotated[int, Body(..., embed=True)],
-#     signing_user: Annotated[int, Body(..., embed=True)],
-#     shared_users: Annotated[list[int], Body(..., embed=True)],
-#     filename: Annotated[str, Body(..., embed=True)],
-#     recipient_email: Annotated[str, Body(..., embed=True)]
-# ):
-#     document = Document(filename=filename, created_by=owner_id)
-#     session = CONNECTOR.create_session()
-#     await CONNECTOR.insert_items([document], session, commit=False)
-#     links = [DocumentUserLink(document_id=document.id, user_id=shared_user, permission_type="read") for shared_user in shared_users]
-#     links.append(DocumentUserLink(document_id=document.id, user_id=signing_user, permission_type="sign"))
-#     await create_document_links(session, links, commit=False)
-#     await session.commit()
-#     await session.close()
-#     # Need to check availability of the signing_user, otherwise trigger delegation
-#     # Need to trigger the notifications for the current org
-#     # Need to send an email if remote recipient is not using the solution
-#     # Otherwise, share the document with the other organization
 
+@app.post("/documents/{document_id}/sign")
+async def sign(
+    document_id: int,
+    user_id: Annotated[int, Body(..., embed=True)],
+    response: Response
+):
+    session = CONNECTOR.create_session()
+    try:
+        documents = await get_pending_signatures_db(session, user_id)
+        document_signed = False
+        for d in documents:
+            if d.id == document_id:
+                signature_owners = await get_delegation_signing_user(session, document_id, user_id)
+                for owner in signature_owners:
+                    await sign_document(session, owner.id, user_id, document_id)
+                document_signed = True
+    except Exception as err:
+        APP_LOGGER.error(err)
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "An unknown error has occured"}
+    finally:
+        await session.close()
+    if not document_signed:
+        response.status_code = status.HTTP_404_NOT_FOUND
+        return {"message": "Document does not exist or you do not have permission to sign it"}
+    return {"message": "Document was properly signed"}
