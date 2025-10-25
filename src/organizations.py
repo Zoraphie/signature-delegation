@@ -3,7 +3,7 @@ from sqlalchemy import delete, text
 
 from models import UserHierarchy, User
 
-async def add_user_link(session: AsyncSession, organization_id: int, parent_id: int, child_id: int):
+async def add_user_link(session: AsyncSession, organization_id: int, parent_id: int, child_id: int, commit: bool = True):
     await check_for_circling_relationships(session, organization_id, parent_id, child_id)
     await session.execute(
         delete(UserHierarchy).where(
@@ -28,7 +28,8 @@ async def add_user_link(session: AsyncSession, organization_id: int, parent_id: 
         """),
         {"org_id": organization_id, "parent_id": parent_id, "child_id": child_id}
     )
-    await session.commit()
+    if commit:
+      await session.commit()
 
 async def check_for_circling_relationships(session: AsyncSession, org_id: int, parent_id: int, child_id: int):
     exists = await session.execute(
@@ -45,7 +46,7 @@ async def check_for_circling_relationships(session: AsyncSession, org_id: int, p
     if exists.scalar():
         raise ValueError("Cycle detected: cannot make a descendant into an ancestor.")
 
-async def remove_link(session: AsyncSession, organization_id: int, parent_id: int, child_id: int):
+async def remove_link(session: AsyncSession, organization_id: int, parent_id: int, child_id: int, commit: bool = True):
     await session.execute(
         text("""DELETE h
         FROM user_hierarchy h
@@ -58,7 +59,8 @@ async def remove_link(session: AsyncSession, organization_id: int, parent_id: in
           AND h.organization_id = :org_id;"""),
         {"org_id": organization_id, "parent_id": parent_id, "child_id": child_id}
     )
-    await session.commit()
+    if commit:
+      await session.commit()
 
 async def get_childs(
     session: AsyncSession,

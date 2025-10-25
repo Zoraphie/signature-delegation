@@ -46,14 +46,12 @@ async def create_user(
 ):
     new_user = User(full_name=fullname, organization_id=organization_id)
     try:
-        session = None
-        if parent_id is not None:
-            session = CONNECTOR.create_session()
-        await CONNECTOR.insert_items([new_user], session=session)
+        session = CONNECTOR.create_session()
+        await CONNECTOR.insert_items([new_user], session=session, commit=False)
         self_link = UserHierarchy(organization_id=organization_id, ancestor_id=new_user.id, descendant_id=new_user.id, depth=0)
-        await CONNECTOR.insert_items([self_link], session=session)
+        await CONNECTOR.insert_items([self_link], session=session, commit=False)
         if parent_id is not None:
-            await add_user_link(session, organization_id, parent_id, new_user.id)
+            await add_user_link(session, organization_id, parent_id, new_user.id, commit=False)
     except IntegrityError as err:
         APP_LOGGER.error(err)
         response.status_code = status.HTTP_400_BAD_REQUEST
@@ -63,8 +61,8 @@ async def create_user(
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"message": "An unknown error has occured"}
     finally:
-        if session is not None:
-            await session.close()
+        await session.commit()
+        await session.close()
     return {
         "message": "User was properly created",
         "user_data": new_user
@@ -222,10 +220,11 @@ async def create_document(
 ):
     document = Document(filename=filename, created_by=owner_id)
     session = CONNECTOR.create_session()
-    await CONNECTOR.insert_items([document], session)
+    await CONNECTOR.insert_items([document], session, commit=False)
     links = [DocumentUserLink(document_id=document.id, user_id=shared_user, permission_type="read") for shared_user in shared_users]
     links.append(DocumentUserLink(document_id=document.id, user_id=signing_user, permission_type="sign"))
-    await create_document_links(session, links)
+    await create_document_links(session, links, commit=False)
+    await session.commit()
     await session.close()
     # Need to check availability of the signing_user, otherwise trigger delegation
     # Need to trigger the notifications for the current org

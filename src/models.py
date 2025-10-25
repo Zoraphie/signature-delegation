@@ -26,6 +26,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True)
     full_name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False, unique=True, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"))
     delegation_threshold = Column(Integer, default=0)
     available = Column(Boolean, default=True)

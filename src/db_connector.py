@@ -31,10 +31,11 @@ class MariaDbConnector:
         async with self.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
 
-    async def insert_items(self, items: list[Base], session: AsyncSession | None = None) -> None:
+    async def insert_items(self, items: list[Base], session: AsyncSession | None = None, commit: bool = True) -> None:
         async def insert(session: AsyncSession):
             session.add_all(items)
-            await session.commit()
+            if commit:
+                await session.commit()
             (await session.refresh(item) for item in items)
 
         if session is None:

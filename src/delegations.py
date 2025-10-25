@@ -17,7 +17,7 @@ async def get_user_delegation_as_delegated(session: AsyncSession, user_id: int, 
     result = await session.execute(query)
     return [delegation[0] for delegation in result.all()]
 
-async def create_db_delegation(session: AsyncSession, delegation: Delegation, overwrite: bool = False) -> Delegation:
+async def create_db_delegation(session: AsyncSession, delegation: Delegation, overwrite: bool = False, commit: bool = True) -> Delegation:
     result = await session.execute((
         select(Delegation)
         .where(Delegation.user_id_owner == delegation.user_id_owner, Delegation.user_id_delegate == delegation.user_id_delegate)
@@ -28,7 +28,8 @@ async def create_db_delegation(session: AsyncSession, delegation: Delegation, ov
             await update_delegation(session, delegation)
         return extracted_delegation
     session.add(delegation)
-    await session.commit()
+    if commit:
+        await session.commit()
     await session.refresh(delegation)
     return delegation
 
@@ -46,9 +47,10 @@ async def update_delegation(session: AsyncSession, delegation: Delegation):
     ))
     await session.commit()
 
-async def revoke_db_delegation(session: AsyncSession, user_id: int, user_id_delegate: int):
+async def revoke_db_delegation(session: AsyncSession, user_id: int, user_id_delegate: int, commit: bool = True):
     await session.execute(
         delete(Delegation)
         .where(Delegation.user_id_owner == user_id, Delegation.user_id_delegate == user_id_delegate)
     )
-    await session.commit()
+    if commit:
+        await session.commit()

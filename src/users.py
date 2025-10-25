@@ -6,22 +6,22 @@ from delegations import create_db_delegation, get_user_delegation, get_user_dele
 from organizations import get_childs
 from models import User, Delegation, UserHierarchy
 
-async def update_delegation_threshold(session: AsyncSession, user_id: int, delegation_threshold: int) -> User:
+async def update_delegation_threshold(session: AsyncSession, user_id: int, delegation_threshold: int, commit: bool = True) -> User:
     await session.execute((
         update(User)
         .where(User.id == user_id)
         .values(delegation_threshold=delegation_threshold)
     ))
-    await session.commit()
+    if commit:
+        await session.commit()
     return await session.get(User, user_id)
 
-async def update_availability(session: AsyncSession, user_id: int, availability: bool) -> None:
+async def update_availability(session: AsyncSession, user_id: int, availability: bool, commit: bool = True) -> None:
     await session.execute((
         update(User)
         .where(User.id == user_id)
         .values(available=availability)
     ))
-    await session.commit()
     if not availability:
         delegation_as_delegated = await get_user_delegation_as_delegated(session, user_id, bounded_only=True)
         if len(await get_user_delegation(session, user_id)) == 0:
@@ -32,7 +32,8 @@ async def update_availability(session: AsyncSession, user_id: int, availability:
     else:
         await disable_delegations(session, user_id)
         await disable_lower_delegations(session, user_id)
-    await session.commit()
+    if commit:
+        await session.commit()
 
 async def enable_delegations_from_owner(session: AsyncSession, user_id: int):
     user = await session.get(User, user_id)
@@ -75,6 +76,7 @@ async def disable_delegations(session: AsyncSession, user_id: int):
         .where(Delegation.user_id_owner == user_id)
         .values(bounded=False)
     )
+    await session.commit()
 
 
 async def disable_lower_delegations(
