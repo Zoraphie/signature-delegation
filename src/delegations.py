@@ -10,6 +10,13 @@ async def get_user_delegation(session: AsyncSession, user_id: int) -> list[Deleg
     ))
     return [delegation[0] for delegation in result.all()]
 
+async def get_user_delegation_as_delegated(session: AsyncSession, user_id: int, bounded_only: bool = False) -> list[Delegation]:
+    query = select(Delegation).where(Delegation.user_id_delegate == user_id)
+    if bounded_only:
+        query = query.where(Delegation.bounded == True)
+    result = await session.execute(query)
+    return [delegation[0] for delegation in result.all()]
+
 async def create_db_delegation(session: AsyncSession, delegation: Delegation, overwrite: bool = False) -> Delegation:
     result = await session.execute((
         select(Delegation)

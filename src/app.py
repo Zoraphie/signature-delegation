@@ -147,9 +147,14 @@ async def set_delegation_threshold(user_id: int, delegation_threshold: Annotated
     return {"user": UserSchema.model_validate(user).model_dump()}
 
 @app.put("/users/{user_id}/availability")
-async def set_availability(user_id: int, available: Annotated[bool, Body(..., embed=True)]):
+async def set_availability(user_id: int, available: Annotated[bool, Body(..., embed=True)], response: Response):
     session = CONNECTOR.create_session()
-    await update_availability(session, user_id, available)
+    try:
+        await update_availability(session, user_id, available)
+    except Exception as err:
+        APP_LOGGER.error(err)
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "An unknown error has occured"}
     await session.close()
 
 @app.put("/delegations/create")
@@ -221,6 +226,8 @@ async def create_document(
     links = [DocumentUserLink(document_id=document.id, user_id=shared_user, permission_type="read") for shared_user in shared_users]
     links.append(DocumentUserLink(document_id=document.id, user_id=signing_user, permission_type="sign"))
     await create_document_links(session, links)
+    await session.close()
+    # Need to check availability of the signing_user, otherwise trigger delegation
     # Need to trigger the notifications for the current org
     # Need to send an email if remote recipient is not using the solution
     # Otherwise, share the document with the other organization
