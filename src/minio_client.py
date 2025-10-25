@@ -1,8 +1,7 @@
 import logging
 from dataclasses import dataclass
 
-from minio import Minio
-from minio.error import S3Error
+import aioboto3
 
 @dataclass
 class MinioAuthenticator:
@@ -11,56 +10,83 @@ class MinioAuthenticator:
     host: str
     port: int
 
-class MinioClient:
+class AsyncMinioClient:
     def __init__(self, authenticator: MinioAuthenticator, secure: bool = True, logger: logging.Logger = logging.getLogger()):
-        url = f"{authenticator.host}:{authenticator.port}"
-        self.client = Minio(
-            endpoint=url,
-            access_key=authenticator.username,
-            secret_key=authenticator.password,
-            secure=secure
-        )
+        if secure:
+            prefix = "https://"
+        else:
+            prefix = "http://"
+        self.url = f"{prefix}{authenticator.host}:{authenticator.port}"
+        self.authenticator = authenticator
         self.logger = logger
 
-    def create_bucket(self, bucket_name: str):
+    async def _get_client(self):
+        session = aioboto3.Session()
+        return session.client(
+            "s3",
+            endpoint_url=self.url,
+            aws_access_key_id=self.authenticator.username,
+            aws_secret_access_key=self.authenticator.password,
+            region_name="us-east-1"
+        )
+
+    async def create_bucket(self, bucket_name: str):
         """Create a bucket if non existant"""
-        try:
-            if not self.client.bucket_exists(bucket_name):
-                self.client.make_bucket(bucket_name)
+        async with await self._get_client() as client:
+            exists = await client.list_buckets()
+            if bucket_name not in [b['Name'] for b in exists.get('Buckets', [])]:
+                await client.create_bucket(Bucket=bucket_name)
                 self.logger.info("Bucket %s was created", bucket_name)
             else:
                 self.logger.info("Bucket %s already exists", bucket_name)
-        except S3Error as err:
-            self.logger.error("Error during the bucket creation: %s", err)
 
-    def upload_file(self, bucket_name: str, object_name: str, file_path: str):
-        """Upload a file to the specified bucket"""
-        try:
-            self.client.fput_object(bucket_name, object_name, file_path)
+    async def upload_file(self, bucket_name: str, object_name: str, file_path: str):
+        """Upload a file from path to the specified bucket"""
+        async with await self._get_client() as client:
+            await client.upload_file(file_path, bucket_name, object_name)
             self.logger.info("File %s was upload as %s in %s", file_path, object_name, bucket_name)
-        except S3Error as err:
-            self.logger.error("Error during the file upload: %s", err)
 
-    def download_file(self, bucket_name: str, object_name: str, file_path: str):
+    async def upload_file_from_bytes(self, bucket_name: str, object_name: str, file_data: bytes):
+        """Upload a file from bytes to the specified bucket"""
+        async with await self._get_client() as client:
+            await client.put_object(
+                Bucket=bucket_name,
+                Key=object_name,
+                Body=file_data,
+                ContentLength=len(file_data)
+            )
+
+    async def download_file(self, bucket_name: str, object_name: str, file_path: str):
         """Download a file from the specified bucket"""
-        try:
-            self.client.fget_object(bucket_name, object_name, file_path)
+        async with await self._get_client() as client:
+            await client.download_file(bucket_name, object_name, file_path)
             self.logger.info("File %s downloaded into %s", object_name, file_path)
-        except S3Error as err:
-            self.logger.error("Error during the file download: %s", err)
 
-    def get_objects(self, bucket_name: str) -> list:
+    async def list_objects(self, bucket_name: str) -> list[dict]:
         """Returns all the objects within a bucket"""
-        try:
-            objects = self.client.list_objects(bucket_name)
-            return objects
-        except S3Error as err:
-            self.logger.error("Error during the file listing: %s", err)
+        async with await self._get_client() as client:
+            response = await client.list_objects_v2(Bucket=bucket_name)
+            objects = response.get('Contents', [])
+            result = []
+            for obj in objects:
+                result.append({
+                    "object_name": obj["Key"],
+                    "size": obj["Size"],
+                    "last_modified": obj["LastModified"].isoformat()
+                })
+            return result
 
-    def delete_object(self, bucket_name: str, object_name: str):
+    async def delete_object(self, bucket_name: str, object_name: str):
         """Delete a file from a bucket"""
-        try:
-            self.client.remove_object(bucket_name, object_name)
+        async with await self._get_client() as client:
+            await client.delete_object(Bucket=bucket_name, Key=object_name)
             self.logger.info("File %s was deleted from the bucket %s", object_name, bucket_name)
-        except S3Error as err:
-            self.logger.error("Error during the file deletion: %s", err)
+
+async def main():
+    a = MinioAuthenticator("admin", "password", "192.168.1.157", 9000)
+    c = AsyncMinioClient(a, secure=False)
+    await c.upload_file_from_bytes("async-bucket", "bytefile", b"some bytes")
+    await c.upload_file("async-bucket", "bytefile2", "app.py")
+
+import asyncio
+asyncio.run(main())
