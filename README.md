@@ -1,6 +1,6 @@
 # Overview
 
-This project an async Python backend project providing a document management and signing system with delegation support. The system allows organizations to manage their users with hierarchical relationships defining how signature delegations can be created when a user becomes unavailable. Users can manual define delegates with an expiration period, create documents, ask people to sign them.
+This project is an async Python backend project providing a document management and signing system with delegation support. The system allows organizations to manage their users with hierarchical relationships defining how signature delegations can be created when a user becomes unavailable. Users can manually define delegates with an expiration period, create documents, ask people to sign them.
 
 The main goal of the project is to make the signature process non blocking whenever a user is unavailable for a given period.
 
