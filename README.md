@@ -117,3 +117,77 @@ To install the dependencies and then run all the tests:
 pip install .[test]
 pytest
 ```
+
+## Routes overview
+
+### POST /organizations
+
+Create an organization with the given name, allowing duplicate names.
+Return the data of the organization that was created.
+
+### POST /users
+
+Create a user within the given organization, allowing duplicate names
+Return the data of the user that was created.
+
+### PUT /users/link
+
+Create a hierarchy link between two users. It creates all the entries in UserHierarchy table to ensure the closure table is always coherent.
+
+### DELETE /users/unlink
+
+Remove a hierarchy link between two users. It deletes all the links between users above the parent and users below the child in the closure table as well.
+
+### GET /users/potential_delegates
+
+Return the list of all users who can have a delegation from the given user if they become unavailable. It does not mean that all of them will have a delegation but only that it exists cases where they will end up having a delegation.
+
+### PUT /users/{user_id}/delegation_threshold
+
+Set the maximum depth allowed for automated delegation creation if the user becomes unavailable. A delegation automatically created is a bounded delegation.
+
+### PUT /users/{user_id}/availability
+
+Set the given user availability.
+
+If the user becomes unavailable, it will:
+- Determine if the user already have delegated its signature rights
+- If no it will search for the closest delegated user and create a delegation that will live until the user come back
+- If the user had a delegation from a user above, it will create a delegation from this user above to a user below, as long as the delegation threshold for the above user is respected.
+
+If the user becomes available, it will:
+- Revoke all bounded delegations this user gave during his absence
+- Revoke all bounded delegations that were created from a user above to a user below and only keep the delegation from the above user to the current user
+
+### PUT /delegation/create
+
+Create a manual delegation with an expiration date. Manual delegations can only be revoked by the user or by expiring. Thery are not affected by the availability status of any user.
+
+### GET /delegations
+
+List all the active delegations from a given user, both manual and bounded.
+
+### DELETE /delegations/revoke
+
+Revoke the delegation previously given by a user to another one.
+
+### POST /documents/create
+
+Upload the given file to the file system and creates a metadata entry in the Document table as well as a 'read' entry in the DocumentUserLinks table. When created a document has the 'inert' status meaning it does not need any signature
+
+### POST /documents/{document_id}/share
+
+Create a 'read' entry in the DocumentUserLink for each user the document has been shared with.
+
+### POST /documents/{document_id}/request_signature
+
+Create a 'sign' entry in the DocumentUserLink for the specified signing user
+
+### GET /documents/pending
+
+List all the documents waiting to be signed by the user.
+It lists the documents needing a direct signature and documents the user is allowed to sign via delegation.
+
+### POST /documents/{document_id}/sign
+
+Check if the user has the right to sign the document and then update the DocumentUserLink entry to be marked as signed by the user. Then if there is no remaining unsigned entries in DocumentUserLink for this document, the document is tagged as signed.
