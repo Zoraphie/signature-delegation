@@ -106,3 +106,14 @@ This table stores every relation between users, direct or indirect. If three use
 - 3 entries with depth 0 because each user should be linked to themselves
 - 2 entries with depth 1 between A -> B and B -> C
 - 1 entry with depth 2 between A -> C
+
+## Tests
+
+The project have several basic tests [here](tests/).
+
+To install the dependencies and then run all the tests:
+
+```bash
+pip install .[test]
+pytest
+```
