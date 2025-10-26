@@ -9,14 +9,14 @@ from models import (
     Organization, User, UserHierarchy, UserSchema, Delegation, DelegationSchema,
     DocumentUserLink, Document, DocumentSchema
 )
-from db_connector import MariaDbConnector, MariaDBAuthenticator
-from minio_client import MinioAuthenticator, AsyncMinioClient
-from organizations import add_user_link, remove_link, get_childs
-from users import update_delegation_threshold, update_availability
-from delegations import create_db_delegation, get_user_delegation, revoke_db_delegation
-from utils import compute_timedelta_from_string
-from documents import is_owner, get_pending_signatures_db, sign_document, get_delegation_signing_user
-from logger import configure_basic, get_logger
+from project.clients.db_connector import MariaDbConnector, MariaDBAuthenticator
+from project.clients.minio_client import MinioAuthenticator, AsyncMinioClient
+from project.organizations import add_user_link, remove_link, get_childs
+from project.users import update_delegation_threshold, update_availability
+from project.delegations import create_db_delegation, get_user_delegation, revoke_db_delegation
+from project.utils import compute_timedelta_from_string
+from project.documents import is_owner, get_pending_signatures_db, sign_document, get_delegation_signing_user
+from project.logger import configure_basic, get_logger
 
 app = FastAPI()
 
@@ -164,6 +164,8 @@ async def set_availability(user_id: int, available: Annotated[bool, Body(..., em
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"message": "An unknown error has occured"}
     await session.close()
+    available = "available" if available else "unavailable"
+    return {"message": f"User {user_id} is now {available}"}
 
 @app.put("/delegations/create")
 async def create_delegation(
@@ -340,3 +342,4 @@ async def sign(
         response.status_code = status.HTTP_404_NOT_FOUND
         return {"message": "Document does not exist or you do not have permission to sign it"}
     return {"message": "Document was properly signed"}
+

@@ -1,9 +1,25 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import delete, text
 
-from models import UserHierarchy, User
+from project.models import UserHierarchy, User
 
 async def add_user_link(session: AsyncSession, organization_id: int, parent_id: int, child_id: int, commit: bool = True):
+    """
+    Add a parent->child relationship into the user_hierarchy for an organization.
+
+    This function checks for cycles, removes existing non-direct descendant links for the child,
+    then inserts all the necessary transitive closure rows to represent the new relationship.
+
+    Args:
+        session: AsyncSession used to execute the statements.
+        organization_id: ID of the organization.
+        parent_id: ID of the parent (ancestor) user.
+        child_id: ID of the child (descendant) user.
+        commit: If True, commit the transaction after the operation.
+
+    Returns:
+        None
+    """
     await check_for_circling_relationships(session, organization_id, parent_id, child_id)
     await session.execute(
         delete(UserHierarchy).where(
@@ -32,6 +48,21 @@ async def add_user_link(session: AsyncSession, organization_id: int, parent_id: 
       await session.commit()
 
 async def check_for_circling_relationships(session: AsyncSession, org_id: int, parent_id: int, child_id: int):
+    """
+    Detect if adding a parent->child link would create a cycle in the hierarchy.
+
+    The function queries the user_hierarchy to determine whether the child is already an ancestor
+    of the parent. If so, it raises a ValueError.
+
+    Args:
+        session: AsyncSession used to run the check.
+        org_id: Organization ID.
+        parent_id: Proposed parent (ancestor) ID.
+        child_id: Proposed child (descendant) ID.
+
+    Raises:
+        ValueError: If the operation would create a cycle.
+    """
     exists = await session.execute(
         text("""
         SELECT 1
@@ -47,6 +78,22 @@ async def check_for_circling_relationships(session: AsyncSession, org_id: int, p
         raise ValueError("Cycle detected: cannot make a descendant into an ancestor.")
 
 async def remove_link(session: AsyncSession, organization_id: int, parent_id: int, child_id: int, commit: bool = True):
+    """
+    Remove ancestor/descendant links that connect a given parent and child within an organization.
+
+    The function deletes the transitive closure rows that represent paths that go through the
+    provided parent->child relation.
+
+    Args:
+        session: AsyncSession used to execute the delete.
+        organization_id: ID of the organization.
+        parent_id: ID of the parent (ancestor).
+        child_id: ID of the child (descendant).
+        commit: If True, commit the transaction after deletion.
+
+    Returns:
+        None
+    """
     await session.execute(
         text("""DELETE h
         FROM user_hierarchy h
@@ -69,7 +116,19 @@ async def get_childs(
     max_depth: int,
     available_only: bool = False
 ) -> list[User]:
-    """min_depth should be strictly higher than 0"""
+    """
+    Return descendants of a given user within the specified depth range.
+
+    Args:
+        session: AsyncSession used to execute the query.
+        user_id: ID of the ancestor user.
+        min_depth: Minimum depth (strictly greater than 0).
+        max_depth: Maximum depth to include.
+        available_only: If True, include only users with the 'available' flag set are returned.
+
+    Returns:
+        List of User instances (rows) representing the matching descendants, ordered by depth ascending.
+    """
     available_part = "AND u.available" if available_only else ""
     result = await session.execute(
         text(f"""SELECT u.*

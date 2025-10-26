@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-from models import Base, User, Organization
+from ..models import Base
 
 @dataclass
 class MariaDBAuthenticator:

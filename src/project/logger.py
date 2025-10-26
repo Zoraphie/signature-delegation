@@ -1,11 +1,3 @@
-"""
-logger.py
-Simple logger factory:
- - par défaut : handler sur stdout
- - API simple pour ajouter des handlers (file, rotating, json...) ou charger une config dictConfig
- - usage recommandé : from logger import get_logger; log = get_logger(__name__)
-"""
-
 from logging import (
     Logger,
     StreamHandler,
